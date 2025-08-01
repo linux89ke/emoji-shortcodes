@@ -1,43 +1,68 @@
 import streamlit as st
-import requests
 import pandas as pd
+import requests
 
+# 🔐 Your YouTube Data API key
+YOUTUBE_API_KEY = "AIzaSyCRcdZRjuSs7eQXXYHVJ1aMbzrJHxtjOvY"
 
-@st.cache_data(ttl=60 * 60 * 12)
-def fetch_emojis():
-    resp = requests.get(
-        "https://raw.githubusercontent.com/omnidan/node-emoji/master/lib/emoji.json"
-    )
-    json = resp.json()
-    codes, emojis = zip(*json.items())
-    return pd.DataFrame(
-        {
-            "Emojis": emojis,
-            "Shortcodes": [f"`:{code}:`" for code in codes],
-        }
-    )
+# 🔍 Get official YouTube video link from brand channel
+def get_official_video_link(product_name, brand):
+    brand = brand.lower().strip()
 
+    search_url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "part": "snippet",
+        "q": product_name,
+        "type": "video",
+        "key": YOUTUBE_API_KEY,
+        "maxResults": 5
+    }
 
-"""
-# Streamlit emoji shortcodes
+    try:
+        response = requests.get(search_url, params=params)
+        if response.status_code != 200:
+            return "N/A"
 
-Below are all the emoji shortcodes supported by Streamlit.
+        data = response.json()
+        for item in data.get("items", []):
+            channel_title = item['snippet']['channelTitle'].lower()
+            if brand in channel_title:
+                return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+    except Exception:
+        return "N/A"
 
-Shortcodes are a way to enter emojis using pure ASCII. So you can type this `:smile:` to show this
-:smile:.
+    return "N/A"
 
-(Keep in mind you can also enter emojis directly as Unicode in your Python strings too — you don't
-*have to* use a shortcode.)
-"""
+# 🧱 Extract video ID from YouTube link
+def extract_video_id(link):
+    if link.startswith("https://www.youtube.com/watch?v="):
+        return link.split("v=")[-1]
+    return "N/A"
 
-st.info(
-    """
-        In addition to the standard emojis listed below, add a little Streamlit
-        flair with `:streamlit:` -> :streamlit: for Streamlit version 1.40.0
-        and later.
-    """
-)
+# 🖼️ Streamlit UI
+st.set_page_config(page_title="YouTube Promo Finder", layout="wide")
+st.title("📺 Official YouTube Promo Video Finder")
 
-emojis = fetch_emojis()
+uploaded_file = st.file_uploader("📤 Upload Excel (.xlsx) with 'Product Name' and 'Brand' columns", type=["xlsx"])
 
-st.table(emojis)
+if uploaded_file:
+    try:
+        df = pd.read_excel(uploaded_file)
+
+        if 'Product Name' not in df.columns or 'Brand' not in df.columns:
+            st.error("❌ Excel must contain 'Product Name' and 'Brand' columns.")
+        else:
+            with st.spinner("🔍 Searching YouTube..."):
+                df['Official YouTube Link'] = df.apply(
+                    lambda row: get_official_video_link(row['Product Name'], row['Brand']), axis=1
+                )
+                df['YouTube Video ID'] = df['Official YouTube Link'].apply(extract_video_id)
+
+            st.success("✅ Done!")
+            st.dataframe(df)
+
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("⬇️ Download CSV", csv, "youtube_links_with_ids.csv", "text/csv")
+
+    except Exception as e:
+        st.error(f"⚠️ Error: {e}")
