@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 # 🔐 Your YouTube API key
 YOUTUBE_API_KEY = "AIzaSyCRcdZRjuSs7eQXXYHVJ1aMbzrJHxtjOvY"
 
-# ✅ Match brand to channel title (basic)
+# ✅ Loose channel match
 def is_official_channel(channel_title, brand):
     brand = re.sub(r'\W+', '', brand.lower())
     channel_title = re.sub(r'\W+', '', channel_title.lower())
@@ -18,11 +18,7 @@ def is_official_channel(channel_title, brand):
         any(kw in channel_title for kw in ['official', 'anker', 'eufy', 'belkin', 'soundcore'])
     )
 
-# 🔎 Simplify long product names
-def simplify_name(name):
-    return re.sub(r'[^a-zA-Z0-9 ]', '', name)
-
-# 🔍 Try YouTube API
+# 🔍 YouTube API search
 def search_youtube_api(product_name, brand):
     search_url = "https://www.googleapis.com/youtube/v3/search"
     params = {
@@ -33,26 +29,29 @@ def search_youtube_api(product_name, brand):
         "maxResults": 5
     }
 
-    response = requests.get(search_url, params=params)
-    if response.status_code != 200:
-        return None  # will fallback
+    try:
+        response = requests.get(search_url, params=params)
+        if response.status_code != 200:
+            return None
 
-    data = response.json()
-    for item in data.get("items", []):
-        channel_title = item["snippet"]["channelTitle"]
-        if is_official_channel(channel_title, brand):
-            return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+        data = response.json()
+        for item in data.get("items", []):
+            channel_title = item["snippet"]["channelTitle"]
+            if is_official_channel(channel_title, brand):
+                return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+    except:
+        pass
+
     return None
 
-# 🔄 Fallback: Google Search scraping
-def fallback_google_search(product_name, brand):
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+# 🟡 Bing fallback
+def fallback_bing_search(product_name, brand):
+    headers = {"User-Agent": "Mozilla/5.0"}
     query = f"site:youtube.com {product_name} {brand}"
-    search_url = f"https://www.google.com/search?q={requests.utils.quote(query)}"
+    search_url = f"https://www.bing.com/search?q={requests.utils.quote(query)}"
 
     try:
+        time.sleep(1.5)
         response = requests.get(search_url, headers=headers)
         soup = BeautifulSoup(response.text, 'html.parser')
         links = soup.find_all('a', href=True)
@@ -60,11 +59,8 @@ def fallback_google_search(product_name, brand):
         for link in links:
             href = link['href']
             if 'youtube.com/watch?v=' in href:
-                # Clean & return the first valid link
-                match = re.search(r"\/url\?q=(https:\/\/www\.youtube\.com\/watch\?v=[^&]+)", href)
-                if match:
-                    return match.group(1)
-    except Exception as e:
+                return href
+    except Exception:
         return None
 
     return None
@@ -72,23 +68,22 @@ def fallback_google_search(product_name, brand):
 # 🎯 Extract YouTube video ID
 def extract_video_id(link):
     if isinstance(link, str) and "watch?v=" in link:
-        return link.split("v=")[-1]
+        return link.split("v=")[-1].split("&")[0]
     return "N/A"
 
-# 🎥 Main video search wrapper
+# 🔁 Master function
 def get_video_link(product_name, brand):
     try:
         yt_link = search_youtube_api(product_name, brand)
         if yt_link:
             return yt_link
-        # fallback if no result
-        return fallback_google_search(product_name, brand) or "N/A"
-    except Exception:
+        return fallback_bing_search(product_name, brand) or "N/A"
+    except:
         return "N/A"
 
-# 📊 Streamlit UI
-st.set_page_config(page_title="Promo Video Finder", layout="wide")
-st.title("📺 YouTube Promo Video Finder with Google Fallback")
+# 🖼️ Streamlit UI
+st.set_page_config(page_title="YouTube Promo Finder", layout="wide")
+st.title("📺 Official YouTube Promo Video Finder (With Bing Fallback)")
 
 uploaded_file = st.file_uploader("📤 Upload Excel (.xlsx) with 'Product Name' and 'Brand' columns", type=["xlsx"])
 
@@ -99,13 +94,13 @@ if uploaded_file:
         if 'Product Name' not in df.columns or 'Brand' not in df.columns:
             st.error("❌ Your Excel must have 'Product Name' and 'Brand' columns.")
         else:
-            with st.spinner("🔍 Searching YouTube and Google..."):
+            with st.spinner("🔎 Searching YouTube and Bing..."):
                 df['Official YouTube Link'] = df.apply(
                     lambda row: get_video_link(row['Product Name'], row['Brand']), axis=1
                 )
                 df['YouTube Video ID'] = df['Official YouTube Link'].apply(extract_video_id)
 
-            st.success("✅ Done!")
+            st.success("✅ Search complete!")
             st.dataframe(df)
 
             csv = df.to_csv(index=False).encode('utf-8')
