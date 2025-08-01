@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import requests
 
-# 🔐 Your YouTube Data API key
+# ✅ Your YouTube Data API key
 YOUTUBE_API_KEY = "AIzaSyCRcdZRjuSs7eQXXYHVJ1aMbzrJHxtjOvY"
 
-# 🔍 Get official YouTube video link from brand channel
+# 🔍 Search YouTube for brand-official video
 def get_official_video_link(product_name, brand):
     brand = brand.lower().strip()
 
@@ -26,22 +26,18 @@ def get_official_video_link(product_name, brand):
         data = response.json()
         for item in data.get("items", []):
             channel_title = item['snippet']['channelTitle'].lower()
-            if brand in channel_title:
-                return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+            if brand in channel_title:  # Check if brand name appears in channel
+                video_id = item['id']['videoId']
+                return f"https://www.youtube.com/watch?v={video_id}"
+
     except Exception:
         return "N/A"
 
     return "N/A"
 
-# 🧱 Extract video ID from YouTube link
-def extract_video_id(link):
-    if link.startswith("https://www.youtube.com/watch?v="):
-        return link.split("v=")[-1]
-    return "N/A"
-
 # 🖼️ Streamlit UI
-st.set_page_config(page_title="YouTube Promo Finder", layout="wide")
-st.title("📺 Official YouTube Promo Video Finder")
+st.set_page_config(page_title="Universal Brand YouTube Promo Finder", layout="wide")
+st.title("📺 Find Official YouTube Promo Videos for Any Brand")
 
 uploaded_file = st.file_uploader("📤 Upload Excel (.xlsx) with 'Product Name' and 'Brand' columns", type=["xlsx"])
 
@@ -56,13 +52,12 @@ if uploaded_file:
                 df['Official YouTube Link'] = df.apply(
                     lambda row: get_official_video_link(row['Product Name'], row['Brand']), axis=1
                 )
-                df['YouTube Video ID'] = df['Official YouTube Link'].apply(extract_video_id)
 
             st.success("✅ Done!")
             st.dataframe(df)
 
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("⬇️ Download CSV", csv, "youtube_links_with_ids.csv", "text/csv")
+            st.download_button("⬇️ Download Results", csv, "youtube_links.csv", "text/csv")
 
     except Exception as e:
-        st.error(f"⚠️ Error: {e}")
+        st.error(f"⚠️ Error processing file: {e}")
