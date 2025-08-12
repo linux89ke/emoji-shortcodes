@@ -2,77 +2,70 @@ import streamlit as st
 import pandas as pd
 import cloudscraper
 from bs4 import BeautifulSoup
-import io
+import time
 
-st.title("Product Link Finder")
-
-# Create scraper session
-scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
-
-def get_product_link(sku):
-    """Search Jumia for the SKU and return product link or NONE."""
+# Function to get Jumia product link from SKU
+def get_jumia_link(sku):
     try:
         search_url = f"https://www.jumia.co.ke/catalog/?q={sku}"
-        res = scraper.get(search_url)
-        if res.status_code != 200:
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(search_url)
+
+        if response.status_code != 200:
             return "NONE"
-        soup = BeautifulSoup(res.text, "html.parser")
-        product_tag = soup.select_one("a.core")
-        if product_tag and "href" in product_tag.attrs:
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        product_tag = soup.find("a", {"class": "core"})
+
+        if product_tag and product_tag.get("href"):
             return "https://www.jumia.co.ke" + product_tag["href"]
-        return "NONE"
-    except Exception:
-        return "NONE"
-
-# Option 1: Single SKU search
-sku_input = st.text_input("Enter a single Jumia SKU (optional):")
-
-if st.button("Get Single SKU Link"):
-    if sku_input.strip():
-        link = get_product_link(sku_input.strip())
-        if link != "NONE":
-            st.success(f"Product Link: {link}")
-            st.markdown(f"[{link}]({link})")
         else:
-            st.error("Product not found online.")
-    else:
-        st.warning("Please enter a SKU.")
+            return "NONE"
+    except:
+        return "NONE"
 
-st.markdown("---")
 
-# Option 2: Bulk upload
-uploaded_file = st.file_uploader("Upload Excel or CSV with SKUs", type=["xlsx", "csv"])
+st.title("Jumia SKU to Product Link Finder")
+
+# Option 1: Manual SKU input
+sku_input = st.text_input("Enter a SKU to search for:")
+if st.button("Find Link") and sku_input:
+    with st.spinner("Searching..."):
+        link = get_jumia_link(sku_input)
+    st.write(f"**Result:** {link}")
+
+# Option 2: File upload
+uploaded_file = st.file_uploader("Upload Excel or CSV file with SKUs", type=["xlsx", "csv"])
 
 if uploaded_file:
     # Read file
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        st.stop()
+    if uploaded_file.name.endswith(".xlsx"):
+        df = pd.read_excel(uploaded_file)
+    else:
+        df = pd.read_csv(uploaded_file)
 
-    # Assume SKU column
     if "SKU" not in df.columns:
-        st.error("File must have a column named 'SKU'.")
-        st.stop()
+        st.error("Uploaded file must have a column named 'SKU'.")
+    else:
+        df["Link"] = ""  # Create an empty column for links
+        progress_bar = st.progress(0)
+        result_table = st.empty()
 
-    st.info(f"Found {len(df)} SKUs. Processing...")
+        for idx, sku in enumerate(df["SKU"]):
+            df.at[idx, "Link"] = get_jumia_link(sku)
+            progress = (idx + 1) / len(df)
+            progress_bar.progress(progress)
+            result_table.dataframe(df)  # Update table live
+            time.sleep(0.2)  # Small delay to visualize progress
 
-    # Get links
-    df["Product Link"] = df["SKU"].astype(str).apply(get_product_link)
+        st.success("Processing complete!")
+        st.dataframe(df)
 
-    # Show table
-    st.dataframe(df)
-
-    # Download as CSV
-    csv_buffer = io.StringIO()
-    df.to_csv(csv_buffer, index=False)
-    st.download_button(
-        label="Download Results as CSV",
-        data=csv_buffer.getvalue(),
-        file_name="jumia_links.csv",
-        mime="text/csv"
-    )
+        # Download results
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download Results as CSV",
+            data=csv,
+            file_name="jumia_links.csv",
+            mime="text/csv",
+        )
