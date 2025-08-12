@@ -4,7 +4,7 @@ import cloudscraper
 from bs4 import BeautifulSoup
 import io
 
-st.title("Jumia SKU → Product Link Finder")
+st.title("Product Link Finder")
 
 # Create scraper session
 scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
