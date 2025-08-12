@@ -1,36 +1,78 @@
 import streamlit as st
+import pandas as pd
 import cloudscraper
 from bs4 import BeautifulSoup
+import io
 
 st.title("Jumia SKU → Product Link Finder")
 
-sku = st.text_input("Enter Jumia SKU (e.g., AI234HA0D11QVNAFAMZ):")
+# Create scraper session
+scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
 
-if st.button("Get Product Link"):
-    if sku.strip():
-        try:
-            # Create scraper
-            scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
-            
-            # Search URL
-            search_url = f"https://www.jumia.co.ke/catalog/?q={sku}"
-            st.write(f"Searching: {search_url}")
+def get_product_link(sku):
+    """Search Jumia for the SKU and return product link or NONE."""
+    try:
+        search_url = f"https://www.jumia.co.ke/catalog/?q={sku}"
+        res = scraper.get(search_url)
+        if res.status_code != 200:
+            return "NONE"
+        soup = BeautifulSoup(res.text, "html.parser")
+        product_tag = soup.select_one("a.core")
+        if product_tag and "href" in product_tag.attrs:
+            return "https://www.jumia.co.ke" + product_tag["href"]
+        return "NONE"
+    except Exception:
+        return "NONE"
 
-            # Get page
-            res = scraper.get(search_url)
-            if res.status_code != 200:
-                st.error(f"Failed to fetch page. Status code: {res.status_code}")
-            else:
-                soup = BeautifulSoup(res.text, "html.parser")
-                product_tag = soup.select_one("a.core")  # Jumia's product card link selector
+# Option 1: Single SKU search
+sku_input = st.text_input("Enter a single Jumia SKU (optional):")
 
-                if product_tag and "href" in product_tag.attrs:
-                    product_url = "https://www.jumia.co.ke" + product_tag["href"]
-                    st.success("Product Link Found!")
-                    st.markdown(f"[{product_url}]({product_url})")
-                else:
-                    st.error("No product found for this SKU.")
-        except Exception as e:
-            st.error(f"Error: {e}")
+if st.button("Get Single SKU Link"):
+    if sku_input.strip():
+        link = get_product_link(sku_input.strip())
+        if link != "NONE":
+            st.success(f"Product Link: {link}")
+            st.markdown(f"[{link}]({link})")
+        else:
+            st.error("Product not found online.")
     else:
         st.warning("Please enter a SKU.")
+
+st.markdown("---")
+
+# Option 2: Bulk upload
+uploaded_file = st.file_uploader("Upload Excel or CSV with SKUs", type=["xlsx", "csv"])
+
+if uploaded_file:
+    # Read file
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
+        st.stop()
+
+    # Assume SKU column
+    if "SKU" not in df.columns:
+        st.error("File must have a column named 'SKU'.")
+        st.stop()
+
+    st.info(f"Found {len(df)} SKUs. Processing...")
+
+    # Get links
+    df["Product Link"] = df["SKU"].astype(str).apply(get_product_link)
+
+    # Show table
+    st.dataframe(df)
+
+    # Download as CSV
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    st.download_button(
+        label="Download Results as CSV",
+        data=csv_buffer.getvalue(),
+        file_name="jumia_links.csv",
+        mime="text/csv"
+    )
