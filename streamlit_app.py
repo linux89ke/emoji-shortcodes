@@ -1,12 +1,16 @@
 import streamlit as st
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 
 # Function to get Jumia product link from SKU
 def jumia_link_from_sku(sku):
     url = f"https://www.jumia.co.ke/catalog/?q={sku}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
+    scraper = cloudscraper.create_scraper(browser={
+        'browser': 'chrome',
+        'platform': 'windows',
+        'mobile': False
+    })
+    r = scraper.get(url)
 
     if r.status_code != 200:
         return None, f"Error: Received status code {r.status_code}"
@@ -35,4 +39,3 @@ if st.button("Search"):
             st.error(error)
     else:
         st.warning("Please enter a SKU.")
-
