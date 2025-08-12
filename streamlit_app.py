@@ -3,11 +3,23 @@ import pandas as pd
 import cloudscraper
 from bs4 import BeautifulSoup
 import time
+from io import BytesIO
+
+# Map for Jumia domains
+JUMIA_DOMAINS = {
+    "Kenya": "jumia.co.ke",
+    "Nigeria": "jumia.com.ng",
+    "Uganda": "jumia.ug",
+    "Egypt": "jumia.com.eg",
+    "Ivory Coast": "jumia.ci",
+    "Ghana": "jumia.com.gh",
+    "Senegal": "jumia.sn"
+}
 
 # Function to get Jumia product link from SKU
-def get_jumia_link(sku):
+def get_jumia_link(sku, domain):
     try:
-        search_url = f"https://www.jumia.co.ke/catalog/?q={sku}"
+        search_url = f"https://{domain}/catalog/?q={sku}"
         scraper = cloudscraper.create_scraper()
         response = scraper.get(search_url)
 
@@ -18,20 +30,24 @@ def get_jumia_link(sku):
         product_tag = soup.find("a", {"class": "core"})
 
         if product_tag and product_tag.get("href"):
-            return "https://www.jumia.co.ke" + product_tag["href"]
+            return f"https://{domain}" + product_tag["href"]
         else:
             return "NONE"
     except:
         return "NONE"
 
+# App UI
+st.title("Product Link Finder")
 
-st.title("Jumia SKU to Product Link Finder")
+# Country selector
+country = st.selectbox("Select Country", list(JUMIA_DOMAINS.keys()))
+domain = JUMIA_DOMAINS[country]
 
 # Option 1: Manual SKU input
 sku_input = st.text_input("Enter a SKU to search for:")
 if st.button("Find Link") and sku_input:
-    with st.spinner("Searching..."):
-        link = get_jumia_link(sku_input)
+    with st.spinner(f"Searching on {country}..."):
+        link = get_jumia_link(sku_input, domain)
     st.write(f"**Result:** {link}")
 
 # Option 2: File upload
@@ -52,7 +68,7 @@ if uploaded_file:
         result_table = st.empty()
 
         for idx, sku in enumerate(df["SKU"]):
-            df.at[idx, "Link"] = get_jumia_link(sku)
+            df.at[idx, "Link"] = get_jumia_link(sku, domain)
             progress = (idx + 1) / len(df)
             progress_bar.progress(progress)
             result_table.dataframe(df)  # Update table live
@@ -61,11 +77,22 @@ if uploaded_file:
         st.success("Processing complete!")
         st.dataframe(df)
 
-        # Download results
+        # CSV download
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="Download Results as CSV",
             data=csv,
-            file_name="jumia_links.csv",
+            file_name=f"jumia_links_{country.lower()}.csv",
             mime="text/csv",
+        )
+
+        # XLSX download
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Links")
+        st.download_button(
+            label="Download Results as Excel",
+            data=output.getvalue(),
+            file_name=f"jumia_links_{country.lower()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
