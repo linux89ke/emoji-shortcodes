@@ -62,7 +62,7 @@ def get_main_product_images_ldjson(product_url):
         st.error(f"Error extracting LD-JSON images: {e}")
         return []
 
-st.title("Jumia SKU Link & Main Product Images Finder")
+st.title("Link image finder")
 
 country = st.selectbox("Select Country", list(JUMIA_DOMAINS.keys()))
 domain = JUMIA_DOMAINS[country]
